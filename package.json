@@ -1,10 +1,11 @@
 {
   "name": "watchreload.js",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Watchreload client script",
   "main": "index",
   "scripts": {
-    "test": "mocha test/tasks/*.spec.js"
+    "test": "mocha test/tasks/*.spec.js",
+    "release": "sh build/release.sh"
   },
   "repository": {
     "type": "git",
@@ -22,8 +23,8 @@
   "author": "sparklewhy@gmail.com",
   "license": "MIT",
   "devDependencies": {
+    "cjs2iife": "^0.1.0"
   },
-  "dependencies": {
-  },
+  "dependencies": {},
   "readmeFilename": "README.md"
 }

@@ -5,9 +5,8 @@
 
 var dom = require('./common/dom');
 var util = require('./common/util');
-var command = require('./command');
 var options = require('./options');
-var constant = require('./constant');
+var constant = require('./common/constant');
 var URL_STYLE_REGEXP = constant.URL_STYLE_REGEXP;
 
 /**
@@ -326,7 +325,7 @@ module.exports = exports = {
         }
 
         if (!hasMatch) {
-            command.reloadPage();
+            exports.reloadPage();
         }
 
     },
@@ -338,7 +337,7 @@ module.exports = exports = {
      */
     reloadImage: function (data) {
         if (!document.querySelectorAll && (typeof jQuery === 'undefined')) {
-            command.reloadPage();
+            exports.reloadPage();
         }
 
         var changeFilePath = getReloadFile(data.path);
@@ -354,7 +353,7 @@ module.exports = exports = {
         hasReload || (hasReload = result);
 
         if (!hasReload) {
-            command.reloadPage();
+            exports.reloadPage();
         }
 
     },
