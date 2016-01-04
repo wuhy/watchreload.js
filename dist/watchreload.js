@@ -1032,7 +1032,7 @@ module.exports = exports = {
     open: function (io) {
         // NOTICE: 这里端口使用变量方式，便于保持跟服务器端启用的端口一致
         this._io = io;
-        this._socket = io.connect('http://{{ip}}:{{port}}');
+        this._socket = io('{{socketUrl}}');
         this.initMessageListener();
     },
     /**
@@ -1040,7 +1040,6 @@ module.exports = exports = {
      */
     close: function () {
         var socket = this._socket;
-        socket.removeAllListeners();
         socket.disconnect();
         this._socket = this._io = null;
     }
