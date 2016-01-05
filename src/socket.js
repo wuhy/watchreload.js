@@ -13,12 +13,12 @@ module.exports = exports = {
      */
     initMessageListener: function () {
         var socket = this._socket;
-        var io = this._io;
         socket.on('command', function (data) {
-            logger.info('receive command: ' + io.JSON.stringify(data));
             var handler = command[data.type];
             delete data.type;
             handler && handler(data);
+
+            logger.debug('receive command: %O', data);
         });
 
         socket.on('connect', function () {
