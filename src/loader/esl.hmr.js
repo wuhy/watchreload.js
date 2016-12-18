@@ -5,9 +5,12 @@
  * @file Browser端标准加载器，符合AMD规范
  * @author errorrik(errorrik@gmail.com)
  *         Firede(firede@firede.us)
+ * @version 2-1-6
  */
 
 /* eslint-disable no-unused-vars */
+/* eslint-disable key-spacing */
+/* eslint-disable eqeqeq */
 /* jshint ignore:start */
 var define;
 var require;
@@ -28,7 +31,7 @@ var esl;
      * @inner
      * @type {Object}
      */
-    var modModules = {};
+    var modModules = window._hmrCacheModule; // HMR
 
     // 模块状态枚举量
     var MODULE_PRE_DEFINED = 1;
@@ -512,6 +515,7 @@ var esl;
                 modAutoDefine();
             }
         );
+        window._hmrInitModule(id, mod); // HMR
     }
 
     /**
@@ -636,6 +640,13 @@ var esl;
                     }
 
                     mod.invokeFactory = null;
+
+                    // HMR
+                    mod.resetPrepareState = function () {
+                        invoking = 0;
+                        mod.state = MODULE_PREPARED;
+                        mod.invokeFactory = invokeFactory;
+                    };
                 }
                 catch (ex) {
                     mod.hang = 1;
@@ -810,7 +821,7 @@ var esl;
      * @inner
      * @type {Object}
      */
-    var loadingModules = {};
+    var loadingModules = window._hmrLoadingModules; // HMR
 
     /**
      * 加载模块
@@ -924,6 +935,8 @@ var esl;
             state: MODULE_ANALYZED
         };
         modModules[pluginAndResource] = resource;
+
+        window._hmrInitModule(pluginAndResource, resource); // HMR
 
         /**
          * plugin加载完成的回调函数
@@ -1241,7 +1254,7 @@ var esl;
     function createLocalRequire(baseId) {
         var requiredCache = {};
 
-        function req(requireId, callback) {
+        function req(requireId, callback, forceNotDefine /* HMR */) {
             if (typeof requireId === 'string') {
                 if (!requiredCache[requireId]) {
                     var topLevelId = normalize(requireId, baseId);
@@ -1283,7 +1296,7 @@ var esl;
                         }
 
                         normalizedIds[i] = normalizedId;
-                        modFlagAutoDefine(absId);
+                        forceNotDefine || modFlagAutoDefine(absId); // HMR
                         pureModules.push(absId);
                     }
                 );
@@ -1296,6 +1309,7 @@ var esl;
                         each(normalizedIds, function (id, i) {
                             if (id == null) {
                                 id = normalizedIds[i] = normalize(requireId[i], baseId);
+                                forceNotDefine || modFlagAutoDefine(id); // HMR
                                 modFlagAutoDefine(id);
                             }
                         });
@@ -1322,6 +1336,10 @@ var esl;
          */
         req.toUrl = function (id) {
             return toUrl(id, baseId || '');
+        };
+
+        req.clearCache = function () { // HMR
+            requiredCache = {};
         };
 
         return req;
@@ -1596,7 +1614,7 @@ var esl;
         // 再throw一个Error多此一举了
         var script = document.createElement('script');
         script.setAttribute('data-require-id', moduleId);
-        script.src = toUrl(moduleId + '.js');
+        script.src = window._hmrInitReloadUrl(moduleId, toUrl(moduleId + '.js')); // HMR
         script.async = true;
         if (script.readyState) {
             script.onreadystatechange = innerOnload;
@@ -1604,6 +1622,11 @@ var esl;
         else {
             script.onload = innerOnload;
         }
+
+        // HMR
+        script.onerror = function () {
+            window._hmrReloadDone(moduleId);
+        };
 
         function innerOnload() {
             var readyState = script.readyState;
@@ -1615,6 +1638,7 @@ var esl;
                 script = null;
 
                 onload();
+                window._hmrReloadDone(moduleId); // HMR
             }
         }
         currentlyAddingScript = script;
