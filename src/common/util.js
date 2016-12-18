@@ -62,7 +62,7 @@ module.exports = exports = {
      * @return {boolean}
      */
     isAbsolutePath: function (path) {
-        return /^\w+:\/\//.test(path);
+        return /^(\w+:)?\/\//.test(path);
     },
 
     /**
@@ -161,8 +161,8 @@ module.exports = exports = {
     addQueryTimestamp: function (url, timeStamp) {
         var urlInfo = exports.parseURL(url);
         var param = urlInfo.param;
-        var versionParam = 'browserreload=' + (timeStamp || (new Date()).getTime());
-        var newParam = param.replace(/(\?|&)browserreload=(\d+)/, '$1' + versionParam);
+        var versionParam = '_wr=' + (timeStamp || (new Date()).getTime());
+        var newParam = param.replace(/(\?|&)_wr=(\d+)/, '$1' + versionParam);
 
         if (newParam === param) {
             newParam = param + ((param ? '&' : '?') + versionParam);
@@ -243,5 +243,62 @@ module.exports = exports = {
         }
 
         return maxMatchFiles;
+    },
+
+    /**
+     * 继承
+     *
+     * @param {Function} child 子类
+     * @param {Function} parent 父类
+     * @return {Function}
+     */
+    inherits: function (child, parent) {
+        var Empty = function () {
+            this._super = parent.prototype;
+        };
+        Empty.prototype = parent.prototype;
+
+        var proto = new Empty();
+        var subProto = child.prototype;
+        for (var k in subProto) {
+            if (subProto.hasOwnProperty(k)) {
+                proto[k] = subProto[k];
+            }
+        }
+
+        subProto.constructor = child;
+        child.prototype = subProto;
+
+        return child;
+    },
+
+    /**
+     * 查找给定的数据项在数组中的索引
+     *
+     * @param {*} item 要查找的数据项
+     * @param {Array} arr 目标数组
+     * @return {number}
+     */
+    findInArray: function (item, arr) {
+        var found = -1;
+        for (var i = 0, len = arr.length; i < len; i++) {
+            if (item === arr[i]) {
+                found = i;
+                break;
+            }
+        }
+
+        return found;
+    },
+
+    /**
+     * 判断给定的数据项是否在给定的数组里
+     *
+     * @param {*} item 要查找的数据项
+     * @param {Array} arr 目标数组
+     * @return {boolean}
+     */
+    isInArr: function (item, arr) {
+        return exports.findInArray(item, arr) !== -1;
     }
 };

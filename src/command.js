@@ -1,3 +1,4 @@
+
 /**
  * @file reload 命令相关接口定义
  * @author sparklewhy@gmail.com
@@ -6,6 +7,7 @@
 var dom = require('./common/dom');
 var util = require('./common/util');
 var options = require('./options');
+var moduleManage = require('./module');
 var constant = require('./common/constant');
 var URL_STYLE_REGEXP = constant.URL_STYLE_REGEXP;
 
@@ -193,27 +195,6 @@ function reloadStyleSheetImage(path, reloadVersion) {
 }
 
 /**
- * 获取要reload的文件路径，根据livereload选项配置，若未找到，默认reload变化的文件路径
- *
- * @param {string} changePath 变化的文件路径
- * @return {string}
- */
-function getReloadFile(changePath) {
-    var livereloadPathMap = options.livereload || {};
-    for (var path in livereloadPathMap) {
-        if (livereloadPathMap.hasOwnProperty(path)) {
-            var regex = new RegExp(path);
-            if (regex.test(changePath)) {
-                return livereloadPathMap[path];
-            }
-        }
-
-    }
-
-    return changePath;
-}
-
-/**
  * 重新加载HTML行业样式设置的图片相关的样式
  *
  * @param {string} path 要重新加载的图片路径
@@ -288,14 +269,21 @@ module.exports = exports = {
      * 初始化reload上下文的选项信息
      *
      * @param {Object} data 要初始化选项信息
+     * @param {Object} socket 和服务器端通信 socket 实例
      */
-    init: function (data) {
-        options.livereload = data.livereload || {};
+    init: function (data, socket) {
+        options.hmr = !!data.hmr;
         for (var k in data) {
             if (data.hasOwnProperty(k)) {
                 options[k] = data[k];
             }
+        }
 
+        if (options.hmr) {
+            var syncModules = moduleManage.getSyncModules();
+            if (syncModules) {
+                socket.sendMessage('syncModule', syncModules);
+            }
         }
     },
 
@@ -305,7 +293,7 @@ module.exports = exports = {
      * @param {{ path: string }} data 重新加载的样式文件信息
      */
     reloadCSS: function (data) {
-        var changeFilePath = getReloadFile(data.path);
+        var changeFilePath = data.path;
         var hasMatch = false;
         var linkStyles = dom.getLinkStyles();
         var importStyles = dom.getImportStyles();
@@ -340,7 +328,7 @@ module.exports = exports = {
             exports.reloadPage();
         }
 
-        var changeFilePath = getReloadFile(data.path);
+        var changeFilePath = data.path;
         var hasReload = false;
 
         var reloadVersion = (new Date()).getTime();
@@ -363,5 +351,55 @@ module.exports = exports = {
      */
     reloadPage: function () {
         window.document.location.reload();
+    },
+
+    /**
+     * 更新模块资源
+     *
+     * @param {Object} data 变更的模块数据信息
+     * @param {string} data.path 更新的模块的路径
+     * @param {string} data.hash 模块内容的 hash 值
+     */
+    updateModule: function (data) {
+        // TODO 增加资源依赖同步接口
+        // TODO 对于样式修改，先判断页面引用的样式入口是否有该样式文件或者间接依赖该文件，有重新 reload 样式
+        moduleManage.updateModule(data);
+    },
+
+    /**
+     * 删除模块
+     *
+     * @param {Array.<string>} data 删除的模块路径信息
+     */
+    removeModule: function (data) {
+        moduleManage.removeModule(data);
+    },
+
+    /**
+     * 添加模块
+     *
+     * @param {Array.<Object>} data 添加的模块信息：
+     *        {
+     *          path: string,
+     *          hash: string
+     *        }
+     */
+    addModule: function (data) {
+        moduleManage.addModule(data);
+    },
+
+    /**
+     * 同步模块
+     *
+     * @param {Array.<Object>} data 要同步的模块信息，模块信息：
+     *        {
+     *          path: string,
+     *          removed: boolean, // 是否已经移除
+     *          hash: string, // 模块的内容 hash
+     *        }
+     */
+    syncModule: function (data) {
+        moduleManage.syncModule(data);
     }
+
 };

@@ -13,10 +13,10 @@ module.exports = exports = {
     logLevel: 'info',
 
     /**
-     * 定义要reload的文件路径，key为变化的文件路径的正则，value为要reload的文件路径
+     * 是否开启 hmr
      *
-     * @type {Object}
+     * @type {boolean}
      */
-    livereload: {}
+    hmr: false
 };
 

@@ -4,21 +4,20 @@
  */
 
 var logger = require('./log');
-var command = require('./command');
+var EventListener = require('./common/event');
 
-module.exports = exports = {
+var socket = {
 
     /**
      * 初始化消息接收监听器
      */
     initMessageListener: function () {
         var socket = this._socket;
-        socket.on('command', function (data) {
-            var handler = command[data.type];
-            delete data.type;
-            handler && handler(data);
-
-            logger.debug('receive command: %O', data);
+        var me = this;
+        socket.on('command', function (info) {
+            var type = info.type;
+            me.emit(type, info.data);
+            logger.debug('receive %s command: %O', type, info);
         });
 
         socket.on('connect', function () {
@@ -46,7 +45,6 @@ module.exports = exports = {
         if (socket) {
             socket.emit(msgType, data || {});
         }
-
     },
 
     /**
@@ -70,3 +68,7 @@ module.exports = exports = {
         this._socket = this._io = null;
     }
 };
+
+EventListener.extends(socket);
+
+module.exports = exports = socket;

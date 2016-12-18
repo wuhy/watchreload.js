@@ -5,7 +5,8 @@
   "main": "index",
   "scripts": {
     "test": "mocha test/tasks/*.spec.js",
-    "release": "sh build/release.sh"
+    "esl": "uglifyjs src/loader/esl.hmr.js -o dist/esl.hmr.min.js && cp src/loader/esl.hmr.js dist/esl.hmr.js",
+    "release": "sh build/release.sh && npm run esl"
   },
   "repository": {
     "type": "git",
@@ -23,7 +24,8 @@
   "author": "sparklewhy@gmail.com",
   "license": "MIT",
   "devDependencies": {
-    "cjs2iife": "^0.1.0"
+    "cjs2iife": "^0.1.0",
+    "uglify-js": "^2.6.1"
   },
   "dependencies": {},
   "readmeFilename": "README.md"

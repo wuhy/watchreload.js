@@ -126,10 +126,8 @@ module.exports = exports = {
                 return ownerNode;
             }
 
-
             // 如果不存在，回溯到父样式表进行查找
             styleSheet = styleSheet.parentStyleSheet;
-
         }
     },
 
