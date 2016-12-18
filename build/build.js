@@ -13,3 +13,4 @@ cjs2iffe({
     compress: true,
     output: path.join(currDir, '..', 'dist', 'watchreload.min.js')
 });
+

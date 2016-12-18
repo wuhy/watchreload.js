@@ -20,7 +20,7 @@
     };
 
     // init the namespace
-    var _global = {"common":{"constant":{},"util":{},"dom":{}},"options":{},"command":{},"socket":{},"index":{},"log":{}};
+    var _global = {"common":{"constant":{},"event":{},"util":{},"dom":{}},"command":{},"options":{},"socket":{},"module":{},"index":{},"log":{},"hmr":{}};
 
     // all modules definition
     
@@ -30,18 +30,251 @@ var _module = {exports: _exports};
 
 (function (module, exports, require) {
     /**
- * @file 常量定义
+ * @file 事件监听模块
  * @author sparklewhy@gmail.com
  */
-/**
- * 用于提取样式值包括import包含的 url(xxx) 里包含的链接地址
- *
- * @type {RegExp}
- * @const
- */
-exports.URL_STYLE_REGEXP = /url\s*\(\s*['"]?\s*([^\s'"]*)\s*['"]?\s*\)/g;
+function EventListener() {
+}
+EventListener.prototype._getListener = function (type) {
+    if (type === '*') {
+        return this._allEvents || (this._allEvents = []);
+    }
+    if (!this._listener) {
+        this._listener = {};
+    }
+    if (type) {
+        var listener = this._listener[type] || [];
+        this._listener[type] = listener;
+        return listener;
+    }
+    return this._listener;
+};
+EventListener.prototype.on = function (type, handler) {
+    var listeners = this._getListener(type);
+    listeners.push(handler);
+    return this;
+};
+EventListener.prototype.once = function (type, handler) {
+    var me = this;
+    var onceHandler = function () {
+        me.un(type, onceHandler);
+        handler.apply(this, arguments);
+    };
+    this.on(type, onceHandler);
+    return this;
+};
+EventListener.prototype.un = function (type, handler) {
+    var argsNum = arguments.length;
+    var listeners = this._getListener(type);
+    switch (argsNum) {
+    case 0:
+        this._listener = {};
+        this._allEvents = [];
+        break;
+    case 1:
+        listeners.length = 0;
+        break;
+    default:
+        for (var i = listeners.length - 1; i >= 0; i--) {
+            if (listeners[i] === handler) {
+                listeners.splice(i, 1);
+                break;
+            }
+        }
+    }
+    return this;
+};
+EventListener.prototype.emit = function (type, data) {
+    var args = Array.prototype.slice.call(arguments);
+    args.shift();
+    var listeners = this._getListener(type);
+    for (var i = listeners.length - 1; i >= 0; i--) {
+        listeners[i].apply(this, args);
+    }
+    var allEvents = this._getListener('*');
+    for (i = allEvents.length - 1; i >= 0; i--) {
+        allEvents[i].apply(this, arguments);
+    }
+    return this;
+};
+EventListener.extends = function (proto) {
+    var superProto = EventListener.prototype;
+    for (var k in superProto) {
+        if (superProto.hasOwnProperty(k)) {
+            proto[k] = superProto[k];
+        }
+    }
+};
+module.exports = exports = EventListener;
 })(_module, _exports, _require);
-_global['common']['constant'] = _module.exports;
+_global['common']['event'] = _module.exports;
+
+
+_exports = {};
+_module = {exports: _exports};
+
+(function (module, exports, require) {
+    /**
+ * @file reload 选项定义
+ * @author sparklewhy@gmail.com
+ */
+module.exports = exports = {
+    /**
+     * 打印 log 层级
+     *
+     * @type {string}
+     */
+    logLevel: 'info',
+    /**
+     * 是否开启 hmr
+     *
+     * @type {boolean}
+     */
+    hmr: false
+};
+})(_module, _exports, _require);
+_global['options'] = _module.exports;
+
+
+_exports = {};
+_module = {exports: _exports};
+
+(function (module, exports, require) {
+    /**
+ * @file log 模块
+ * @author sparklewhy@gmail.com
+ */
+var options = require('options');
+/**
+ * 打印日志信息
+ *
+ * @param {string} type 日志类型，有效值:log/warn/error
+ * @param {...*} msg 要打印的消息
+ */
+function log(type) {
+    var typeMap = {
+        debug: 'log',
+        info: 'log',
+        warn: 'warn',
+        error: 'error'
+    };
+    var logLevel = {
+        debug: 0,
+        info: 1,
+        warn: 2,
+        error: 3
+    };
+    var currLevel = logLevel[options.logLevel];
+    currLevel == null && (currLevel = logLevel.info);
+    if (logLevel[type] < currLevel) {
+        return;
+    }
+    var console = window.console;
+    if (console) {
+        var logInfo = console[typeMap[type]] || console.log;
+        if (typeof logInfo === 'function') {
+            var info = '[watchreload-' + type + ']: ' + arguments[1];
+            var args = Array.prototype.slice.call(arguments, 2);
+            args.unshift(info);
+            logInfo.apply(console, args);
+        }
+    }
+}
+module.exports = exports = {
+    debug: function () {
+        var args = Array.prototype.slice.call(arguments, 0);
+        args.unshift('debug');
+        log.apply(this, args);
+    },
+    info: function () {
+        var args = Array.prototype.slice.call(arguments, 0);
+        args.unshift('info');
+        log.apply(this, args);
+    },
+    warn: function () {
+        var args = Array.prototype.slice.call(arguments, 0);
+        args.unshift('warn');
+        log.apply(this, args);
+    },
+    error: function () {
+        var args = Array.prototype.slice.call(arguments, 0);
+        args.unshift('error');
+        log.apply(this, args);
+    }
+};
+})(_module, _exports, _require);
+_global['log'] = _module.exports;
+
+
+_exports = {};
+_module = {exports: _exports};
+
+(function (module, exports, require) {
+    /**
+ * @file 和服务器通信接口定义
+ * @author sparklewhy@gmail.com
+ */
+var logger = require('log');
+var EventListener = require('common/event');
+var socket = {
+    /**
+     * 初始化消息接收监听器
+     */
+    initMessageListener: function () {
+        var socket = this._socket;
+        var me = this;
+        socket.on('command', function (info) {
+            var type = info.type;
+            me.emit(type, info.data);
+            logger.debug('receive %s command: %O', type, info);
+        });
+        socket.on('connect', function () {
+            socket.emit('register', { name: window.navigator.userAgent });
+            logger.info('connection is successful.');
+        });
+        socket.on('disconnect', function () {
+            logger.info('connection is disconnected.');
+        });
+        socket.on('reconnecting', function () {
+            logger.info('reconnection...');
+        });
+    },
+    /**
+     * 向服务端发送消息
+     *
+     * @param {string} msgType 发送的消息类型
+     * @param {Object} data 要发送消息数据
+     */
+    sendMessage: function (msgType, data) {
+        var socket = this._socket;
+        if (socket) {
+            socket.emit(msgType, data || {});
+        }
+    },
+    /**
+     * 打开socket通信，同时开始监听进入的消息
+     *
+     * @param {Object} io io 实例
+     */
+    open: function (io) {
+        // NOTICE: 这里端口使用变量方式，便于保持跟服务器端启用的端口一致
+        this._io = io;
+        this._socket = io('{{socketUrl}}');
+        this.initMessageListener();
+    },
+    /**
+     * 关闭socket通信
+     */
+    close: function () {
+        var socket = this._socket;
+        socket.disconnect();
+        this._socket = this._io = null;
+    }
+};
+EventListener.extends(socket);
+module.exports = exports = socket;
+})(_module, _exports, _require);
+_global['socket'] = _module.exports;
 
 
 _exports = {};
@@ -104,7 +337,7 @@ module.exports = exports = {
      * @return {boolean}
      */
     isAbsolutePath: function (path) {
-        return /^\w+:\/\//.test(path);
+        return /^(\w+:)?\/\//.test(path);
     },
     /**
      * 获取给定的相对路径基于base的绝对路径，若未给定base，默认根据当前浏览器访问的路径信息
@@ -188,8 +421,8 @@ module.exports = exports = {
     addQueryTimestamp: function (url, timeStamp) {
         var urlInfo = exports.parseURL(url);
         var param = urlInfo.param;
-        var versionParam = 'browserreload=' + (timeStamp || new Date().getTime());
-        var newParam = param.replace(/(\?|&)browserreload=(\d+)/, '$1' + versionParam);
+        var versionParam = '_wr=' + (timeStamp || new Date().getTime());
+        var newParam = param.replace(/(\?|&)_wr=(\d+)/, '$1' + versionParam);
         if (newParam === param) {
             newParam = param + ((param ? '&' : '?') + versionParam);
         }
@@ -257,10 +490,719 @@ module.exports = exports = {
             maxMatchFiles.push(maxMatch);
         }
         return maxMatchFiles;
+    },
+    /**
+     * 继承
+     *
+     * @param {Function} child 子类
+     * @param {Function} parent 父类
+     * @return {Function}
+     */
+    inherits: function (child, parent) {
+        var Empty = function () {
+            this._super = parent.prototype;
+        };
+        Empty.prototype = parent.prototype;
+        var proto = new Empty();
+        var subProto = child.prototype;
+        for (var k in subProto) {
+            if (subProto.hasOwnProperty(k)) {
+                proto[k] = subProto[k];
+            }
+        }
+        subProto.constructor = child;
+        child.prototype = subProto;
+        return child;
+    },
+    /**
+     * 查找给定的数据项在数组中的索引
+     *
+     * @param {*} item 要查找的数据项
+     * @param {Array} arr 目标数组
+     * @return {number}
+     */
+    findInArray: function (item, arr) {
+        var found = -1;
+        for (var i = 0, len = arr.length; i < len; i++) {
+            if (item === arr[i]) {
+                found = i;
+                break;
+            }
+        }
+        return found;
+    },
+    /**
+     * 判断给定的数据项是否在给定的数组里
+     *
+     * @param {*} item 要查找的数据项
+     * @param {Array} arr 目标数组
+     * @return {boolean}
+     */
+    isInArr: function (item, arr) {
+        return exports.findInArray(item, arr) !== -1;
     }
 };
 })(_module, _exports, _require);
 _global['common']['util'] = _module.exports;
+
+
+_exports = {};
+_module = {exports: _exports};
+
+(function (module, exports, require) {
+    /**
+ * @file module hot api 接口定义
+ * @author sparklewhy@gmail.com
+ */
+var util = require('common/util');
+var logger = require('log');
+function addCallback(target, callback) {
+    if (target.indexOf(callback) === -1 && typeof callback === 'function') {
+        target.push(callback);
+    }
+}
+function removeCallback(target, callback) {
+    var index = target.indexOf(callback);
+    if (index !== -1) {
+        target.splice(index, 1);
+    }
+}
+var hotCurrentModuleData = {};
+module.exports = exports = {};
+exports.hot = function (moduleId) {
+    var hot = {
+        /* eslint-disable fecs-camelcase */
+        _acceptedDependencies: {},
+        _declinedDependencies: {},
+        _selfAccepted: false,
+        _selfDeclined: false,
+        _disposeHandlers: [],
+        /* eslint-enable fecs-camelcase */
+        data: hotCurrentModuleData[moduleId],
+        active: true,
+        accept: function (dep, callback) {
+            if (typeof dep === 'undefined') {
+                hot._selfAccepted = true;
+            } else if (typeof dep === 'function') {
+                hot._selfAccepted = dep;
+            } else if (util.isArray(dep)) {
+                for (var i = 0, len = dep.length; i < len; i++) {
+                    hot._acceptedDependencies[dep[i]] = callback;
+                }
+            } else if (dep && typeof dep === 'string') {
+                hot._acceptedDependencies[dep] = callback;
+            }
+        },
+        decline: function (dep) {
+            if (typeof dep === 'undefined') {
+                hot._selfDeclined = true;
+            } else if (util.isArray(dep)) {
+                for (var i = 0, len = dep.length; i < len; i++) {
+                    hot._declinedDependencies[dep[i]] = true;
+                }
+            } else if (dep && typeof dep === 'string') {
+                hot._declinedDependencies[dep] = true;
+            }
+        },
+        dispose: function (callback) {
+            addCallback(hot._disposeHandlers, callback);
+        },
+        addDisposeHandler: function (callback) {
+            addCallback(hot._disposeHandlers, callback);
+        },
+        removeDisposeHandler: function (callback) {
+            removeCallback(hot._disposeHandlers, callback);
+        }    // Management API
+             // check: function () {},
+             // apply: function () {},
+             //
+             // status: function (l) {
+             //     if (!l) {
+             //         return hotStatus;
+             //     }
+             //
+             //     hotStatusHandlers.push(l);
+             // },
+             //
+             // addStatusHandler: function (callback) {
+             //     addCallback(hotStatusHandlers, callback);
+             // },
+             //
+             // removeStatusHandler: function (callback) {
+             //     removeCallback(hotStatusHandlers, callback);
+             // }
+    };
+    return hot;
+};
+exports.disposeModule = function (moduleId, module) {
+    var data = {};
+    logger.debug('dispose module: %s', moduleId);
+    // Call dispose handlers
+    var disposeHandlers = module.hot._disposeHandlers;
+    for (var i = 0, len = disposeHandlers.length; i < len; i++) {
+        var cb = disposeHandlers[i];
+        cb(data);
+    }
+    hotCurrentModuleData[moduleId] = data;
+    // disable module (this disables requires from this module)
+    module.hot.active = false;
+};
+exports.isSelfAccept = function (module) {
+    return module.hot._selfAccepted;
+};
+exports.isSelfDecline = function (module) {
+    return module.hot._selfDeclined;
+};
+exports.isDecline = function (module, depModId) {
+    return module.hot._declinedDependencies[depModId];
+};
+exports.selfAccept = function (module, err) {
+    var callback = module.hot._selfAccepted;
+    if (typeof callback === 'function') {
+        callback(err);
+    }
+};
+exports.accept = function (upModInfos, upModDepInfo) {
+    var callbacks = [];
+    var upModIds = [];
+    for (var i = 0, len = upModInfos.length; i < len; i++) {
+        var mod = upModInfos[i];
+        upModIds[i] = mod.id;
+        var depModIds = upModDepInfo[mod.id];
+        if (!depModIds) {
+            continue;
+        }
+        for (var j = 0, jLen = depModIds.length; j < jLen; j++) {
+            addCallback(callbacks, mod.define.hot._acceptedDependencies[depModIds[j]]);
+        }
+    }
+    for (var k = 0, kLen = callbacks.length; k < kLen; k++) {
+        callbacks[k](upModIds);
+    }
+};
+})(_module, _exports, _require);
+_global['hmr'] = _module.exports;
+
+
+_exports = {};
+_module = {exports: _exports};
+
+(function (module, exports, require) {
+    /**
+ * @file 模块缓存管理
+ * @author sparklewhy@gmail.com
+ */
+var util = require('common/util');
+var hmr = require('hmr');
+var logger = require('log');
+/* eslint-disable fecs-camelcase */
+/**
+ * id 跟 path 转换缓存
+ */
+var _id2PathMap = {};
+var _path2IdMap = {};
+/**
+ * 缓存加载过的加载中模块信息
+ */
+var _cacheModule = window._hmrCacheModule = {};
+var _loadingModules = window._hmrLoadingModules = {};
+/**
+ * 当前模块更新所处的状态
+ *
+ * @type {string}
+ */
+var _status;
+/**
+ * 等待更新的模块列表
+ *
+ * @type {Array.<Object>}
+ */
+var _waitingUpdateModules = [];
+/**
+ * 当前重新加载的模块
+ *
+ * @type {Object}
+ */
+var _reloadModule;
+/**
+ * 模块重新加载完成要执行的回调
+ *
+ * @type {Function}
+ */
+var _reloadDoneCallback;
+/**
+ * 热替换状态常量定义
+ *
+ * @type {Object}
+ */
+var HMR_STATUS = {
+    IDLE: 'idle',
+    PREPARE: 'prepare',
+    APPLY: 'apply'
+};
+/**
+ * 解析资源 id
+ *
+ * @param {string} id 要解析的资源 id
+ * @return {{module: string, resource: ?string}}
+ */
+function parseResource(id) {
+    var index = id.indexOf('!');
+    if (index === -1) {
+        return { module: id };
+    }
+    return {
+        module: id.substring(0, index),
+        resource: id.substr(index + 1)
+    };
+}
+/**
+ * 资源 id 转成路径
+ *
+ * @param {string} id 资源 id
+ * @param {boolean} isPluginResource 是否是插件资源
+ * @return {string}
+ */
+function id2Path(id, isPluginResource) {
+    var path = _id2PathMap[id];
+    if (path) {
+        return path;
+    }
+    var a = document.createElement('a');
+    a.href = window.require.toUrl(id);
+    path = a.pathname.replace(/^\//, '') + (isPluginResource ? '' : '.js');
+    _id2PathMap[id] = path;
+    _path2IdMap[path] = id;
+    logger.debug('init id to path: %s => %s', id, path);
+    return path;
+}
+/**
+ * 移除已经存在的模块脚本元素
+ *
+ * @param {string} id 要移除脚本所引用的模块 id
+ */
+function removeExistedScriptElement(id) {
+    var scripts = document.getElementsByTagName('script');
+    var found;
+    for (var i = 0, len = scripts.length; i < len; i++) {
+        if (scripts[i].getAttribute('data-require-id') === id) {
+            found = scripts[i];
+            break;
+        }
+    }
+    if (found) {
+        found.parentNode.removeChild(found);
+    }
+}
+/**
+ * 初始化模块
+ *
+ * @param {string} id 资源 id
+ * @param {Object} module 初始化的模块对象
+ */
+window._hmrInitModule = function (id, module) {
+    _cacheModule[id] = module;
+    // 增加 module hmr api
+    module.hot = hmr.hot(id);
+    if (_status == null) {
+        _status = HMR_STATUS.IDLE;
+    }
+    // init id path map information
+    var resInfo = parseResource(id);
+    var resId = resInfo.resource;
+    if (resId) {
+        id2Path(resId, true);
+    } else {
+        id2Path(id);
+    }
+};
+/**
+ * 初始化重新加载的 url
+ *
+ * @param {string} id 加载资源 id
+ * @param {string} url 重新加载的 url
+ * @return {string}
+ */
+window._hmrInitReloadUrl = function (id, url) {
+    if (_reloadModule && id === _reloadModule.id) {
+        removeExistedScriptElement(id);
+        url += url.indexOf('?') !== -1 ? '&' : '?';
+        url += '_t=' + new Date().getTime();
+    }
+    return url;
+};
+/**
+ * 模块重新加载完成，如果失败也会触发该回调
+ *
+ * @param {string} id 重新加载完成的模块 id
+ */
+window._hmrReloadDone = function (id) {
+    if (_reloadModule && id === _reloadModule.id) {
+        _reloadDoneCallback(_reloadModule);
+        _reloadDoneCallback = _reloadModule = null;
+    }
+};
+/**
+ * 重新加载初始化模块
+ *
+ * @param {Object} module 要重新加载的模块
+ * @param {Function} callback 重新加载完成执行的回调
+ */
+function reloadModule(module, callback) {
+    if (!module.id) {
+        callback();
+        return;
+    }
+    var moduleId = module.id;
+    var mod = _cacheModule[moduleId];
+    var defined = module.inited;
+    if (mod && defined) {
+        try {
+            hmr.disposeModule(moduleId, mod);
+            logger.debug('redefine module: %s', mod.id);
+            var localRequire = mod.require;
+            if (localRequire) {
+                localRequire.clearCache && localRequire.clearCache();
+            }
+            mod.resetPrepareState && mod.resetPrepareState();
+            mod.invokeFactory && mod.invokeFactory();
+            callback(module);
+        } catch (ex) {
+            if (hmr.isSelfAccept(mod.define)) {
+                hmr.selfAccept(mod.define, ex);
+            }
+        }
+        return;
+    }
+    // 每次模块变更只会触发一个模块的重新加载，其他过期的父模块只需重新定义即可
+    _reloadModule = module;
+    _reloadDoneCallback = callback;
+    logger.debug('require id: %s', moduleId);
+    window.require([moduleId], null, !defined);
+}
+// TODO module plugin resource change update?
+// TODO entry script in html replacement and reexecute
+/**
+ * 移除缓存的模块
+ *
+ * @param {string} path 要移除的模块路径
+ */
+function removeCacheModule(path) {
+    var id = _path2IdMap[path];
+    if (id) {
+        var oldMod = _cacheModule[id];
+        oldMod && hmr.disposeModule(id, oldMod);
+        delete _loadingModules[id];
+        delete _cacheModule[id];
+    }
+}
+/**
+ * 获取模块元数据信息
+ *
+ * @param {Object} module 要获取的模块信息
+ * @return {Object}
+ */
+function getModuleMetaData(module) {
+    var id = module.id;
+    var resInfo = parseResource(id);
+    var resId = resInfo.resource;
+    if (resId) {
+        return {
+            id: resId,
+            path: id2Path(resId, true),
+            plugin: resInfo.module
+        };
+    }
+    var path = id2Path(id);
+    var metaData = {};
+    metaData.id = id;
+    metaData.path = path;
+    metaData.define = module;
+    // 初始化依赖的模块
+    var deps = module.depMs || [];
+    var depModPaths = [];
+    for (var i = 0, len = deps.length; i < len; i++) {
+        depModPaths[i] = id2Path(deps[i].absId);
+    }
+    metaData.depModules = depModPaths;
+    // 初始化依赖的资源
+    var depRes = module.depRs || [];
+    var depResPaths = [];
+    for (i = 0, len = depRes.length; i < len; i++) {
+        if (depRes[i].absId) {
+            depModPaths[i] = id2Path(parseResource(depRes[i].absId).resource, true);
+        } else {
+            depModPaths[i] = util.getAbsolutePath(path, depRes[i].res);
+        }
+    }
+    metaData.depResources = depResPaths;
+    metaData.inited = module.state === 4;
+    // 如果定义过，则认为初始化过
+    return metaData;
+}
+/**
+ * 获取给定模块的路径的所有父模块
+ *
+ * @param {string} path 获取给定的模块路径的所有父模块
+ * @return {Array.<string>}
+ */
+function getParentModule(path) {
+    var parents = [];
+    for (var k in _cacheModule) {
+        if (_cacheModule.hasOwnProperty(k) && k !== path) {
+            var module = getModuleMetaData(_cacheModule[k]);
+            if (module) {
+                var deps = module.depModules || [];
+                var index = util.findInArray(path, deps);
+                if (index !== -1 && !util.isInArr(deps[index], parents)) {
+                    parents.push(module.path);
+                }
+            }
+        }
+    }
+    return parents;
+}
+/**
+ * 初始化过期的模块
+ *
+ * @inner
+ * @param {Object} upModule 当前变更的模块
+ * @param {Array.<Object>} result 所有过期的模块
+ * @param {boolean=} ignore 是否忽略当前过期模块
+ * @param {Object} initedPathMap 已经初始化过的模块路径
+ * @param {Object} depMap 模块依赖信息的缓存
+ */
+function initOutdatedModules(upModule, result, ignore, initedPathMap, depMap) {
+    var upModPath = upModule.path;
+    if (initedPathMap[upModPath]) {
+        return;
+    }
+    initedPathMap[upModPath] = 1;
+    if (upModule.define && hmr.isSelfDecline(upModule.define)) {
+        throw new Error('Aborted because of self decline: ' + upModule.id);
+    }
+    if (!ignore && upModule.inited) {
+        if (!util.isInArr(module, result)) {
+            result.push(module);
+        }
+    }
+    // 模块不存在，可能一开始是加载失败，导致依赖该模块的模块没法正常初始化，
+    // 这些模块也属于过期模块
+    var parents = getParentModule(upModPath);
+    if (parents) {
+        for (var i = 0, len = parents.length; i < len; i++) {
+            var parentModule = exports.getModuleMetaData(parents[i]) || { path: parents[i] };
+            // 初始化已经存在的模块依赖信息
+            if (parentModule.id && upModule.id) {
+                if (hmr.isDecline(parentModule.define, upModule.id)) {
+                    throw new Error('Aborted because of declined dependency: ' + upModule.id + ' in ' + parentModule.id);
+                }
+                var depIds = depMap[parentModule.id];
+                if (!depIds) {
+                    depIds = depMap[parentModule.id] = [];
+                }
+                if (depIds.indexOf(upModule.id) === -1) {
+                    depIds.push(upModule.id);
+                }
+            }
+            initOutdatedModules(parentModule, result, false, initedPathMap, depMap);
+        }
+    }
+}
+/**
+ * 应用等待更新的模块
+ *
+ * @inner
+ */
+function applyUpdate() {
+    exports.setStatus(HMR_STATUS.IDLE);
+    if (_waitingUpdateModules.length) {
+        var updateModule = _waitingUpdateModules.shift();
+        exports.updateModule(updateModule);
+    }
+}
+/**
+ * 获取缓存的模块元信息
+ *
+ * @param {string} path 要获取的模块路径
+ * @return {?Object}
+ */
+exports.getModuleMetaData = function (path) {
+    var id = _path2IdMap[path];
+    if (id && _cacheModule[id]) {
+        return getModuleMetaData(_cacheModule[id]);
+    }
+};
+/**
+ * 更新模块
+ *
+ * @param {Object} data 更新的模块信息
+ * @param {string} data.path 更新的模块的路径
+ * @param {string=} data.hash 新的模块的内容的 hash
+ * @param {boolean=} data.removed 该模块是否被移除
+ */
+exports.updateModule = function (data) {
+    if (!this.isIdle()) {
+        _waitingUpdateModules.push(data);
+        return;
+    }
+    this.setStatus(HMR_STATUS.APPLY);
+    // 如果模块未发生变化则忽略此次更新
+    var path = data.path;
+    var updateModule = this.getModuleMetaData(path);
+    if (updateModule.hash === data.hash) {
+        applyUpdate();
+        return;
+    }
+    // 如果模块还没初始化 或 明确声明自更新，则只需更新当前变更的模块
+    var outdatedModules = [];
+    var depMap = {};
+    if (!updateModule.inited || hmr.isSelfAccept(updateModule.define)) {
+    } else {
+        initOutdatedModules(updateModule, outdatedModules, true, {}, depMap);
+    }
+    var allUpMods = [].concat(outdatedModules);
+    if (updateModule.id) {
+        allUpMods.push(updateModule);
+    }
+    var total = outdatedModules.length;
+    var counter = 0;
+    var done = function () {
+        counter++;
+        if (counter >= total) {
+            // 接受代码更新
+            hmr.accept(allUpMods, depMap);
+            applyUpdate();
+        }
+    };
+    // 先移除变更的模块，再重新更新所有过期的模块
+    removeCacheModule(path);
+    var updateOutdateModules = function () {
+        for (var i = 0; i < total; i++) {
+            var module = outdatedModules[i];
+            reloadModule(module, done);
+        }
+        if (!total) {
+            done();
+        }
+    };
+    var isModuleRemoved = data.removed;
+    if (isModuleRemoved) {
+        updateOutdateModules();
+    } else {
+        // 先确保要重新加载的模块已经 ready 再更新其它过期的父模块
+        reloadModule(updateModule, updateOutdateModules);
+    }
+};
+/**
+ * 移除模块
+ *
+ * @param {Array.<string>|string} paths 被移除的模块路径
+ */
+exports.removeModule = function (paths) {
+    if (!util.isArray(paths)) {
+        paths = [paths];
+    }
+    for (var i = 0, len = paths.length; i < len; i++) {
+        this.updateModule({
+            path: paths[i],
+            removed: true
+        });
+    }
+};
+/**
+ * 添加新的模块
+ *
+ * @param {Array.<Object>|Object} modules 添加的模块
+ */
+exports.addModule = function (modules) {
+    if (!util.isArray(modules)) {
+        modules = [modules];
+    }
+    for (var i = 0, len = modules.length; i < len; i++) {
+        this.updateModule(modules[i]);
+    }
+};
+/**
+ * 同步模块信息
+ *
+ * @param {Array.<Object>} modules 要同步的模块
+ */
+exports.syncModule = function (modules) {
+    for (var i = 0, len = modules.length; i < len; i++) {
+        this.updateModule(modules[i]);
+    }
+};
+/**
+ * 获取当前所有要被同步的运行的模块
+ *
+ * @return {?{modules: Array.<string>, resources: Array.<string>}}
+ */
+exports.getSyncModules = function () {
+    var modules = [];
+    var resources = [];
+    for (var k in _cacheModule) {
+        if (_cacheModule.hasOwnProperty(k)) {
+            var item = _cacheModule[k];
+            var resInfo = parseResource(item.id);
+            if (resInfo.resource) {
+                resources.push(id2Path(resInfo.resource));
+            } else {
+                modules.push(id2Path(resInfo.module));
+            }
+        }
+    }
+    if (modules.length || resources.length) {
+        return {
+            modules: modules,
+            resources: resources
+        };
+    }
+    return null;
+};
+/**
+ * 热替换状态常量
+ *
+ * @type {Object}
+ */
+exports.HMR_STATUS = HMR_STATUS;
+/**
+ * 设置当前所处状态
+ *
+ * @param {string} status 当前状态，可用的状态定义见 {@link HMR_STATUS}
+ */
+exports.setStatus = function (status) {
+    _status = status;
+};
+/**
+ * 判断当前模块更新是否处于空闲状态
+ *
+ * @return {boolean}
+ */
+exports.isIdle = function () {
+    return _status === HMR_STATUS.IDLE;
+};    /* eslint-enable fecs-camelcase */
+})(_module, _exports, _require);
+_global['module'] = _module.exports;
+
+
+_exports = {};
+_module = {exports: _exports};
+
+(function (module, exports, require) {
+    /**
+ * @file 常量定义
+ * @author sparklewhy@gmail.com
+ */
+/**
+ * 用于提取样式值包括import包含的 url(xxx) 里包含的链接地址
+ *
+ * @type {RegExp}
+ * @const
+ */
+exports.URL_STYLE_REGEXP = /url\s*\(\s*['"]?\s*([^\s'"]*)\s*['"]?\s*\)/g;
+})(_module, _exports, _require);
+_global['common']['constant'] = _module.exports;
 
 
 _exports = {};
@@ -605,38 +1547,13 @@ _module = {exports: _exports};
 
 (function (module, exports, require) {
     /**
- * @file reload 选项定义
- * @author sparklewhy@gmail.com
- */
-module.exports = exports = {
-    /**
-     * 打印 log 层级
-     *
-     * @type {string}
-     */
-    logLevel: 'info',
-    /**
-     * 定义要reload的文件路径，key为变化的文件路径的正则，value为要reload的文件路径
-     *
-     * @type {Object}
-     */
-    livereload: {}
-};
-})(_module, _exports, _require);
-_global['options'] = _module.exports;
-
-
-_exports = {};
-_module = {exports: _exports};
-
-(function (module, exports, require) {
-    /**
  * @file reload 命令相关接口定义
  * @author sparklewhy@gmail.com
  */
 var dom = require('common/dom');
 var util = require('common/util');
 var options = require('options');
+var moduleManage = require('module');
 var constant = require('common/constant');
 var URL_STYLE_REGEXP = constant.URL_STYLE_REGEXP;
 /**
@@ -784,24 +1701,6 @@ function reloadStyleSheetImage(path, reloadVersion) {
     return hasReload;
 }
 /**
- * 获取要reload的文件路径，根据livereload选项配置，若未找到，默认reload变化的文件路径
- *
- * @param {string} changePath 变化的文件路径
- * @return {string}
- */
-function getReloadFile(changePath) {
-    var livereloadPathMap = options.livereload || {};
-    for (var path in livereloadPathMap) {
-        if (livereloadPathMap.hasOwnProperty(path)) {
-            var regex = new RegExp(path);
-            if (regex.test(changePath)) {
-                return livereloadPathMap[path];
-            }
-        }
-    }
-    return changePath;
-}
-/**
  * 重新加载HTML行业样式设置的图片相关的样式
  *
  * @param {string} path 要重新加载的图片路径
@@ -860,12 +1759,19 @@ module.exports = exports = {
      * 初始化reload上下文的选项信息
      *
      * @param {Object} data 要初始化选项信息
+     * @param {Object} socket 和服务器端通信 socket 实例
      */
-    init: function (data) {
-        options.livereload = data.livereload || {};
+    init: function (data, socket) {
+        options.hmr = !!data.hmr;
         for (var k in data) {
             if (data.hasOwnProperty(k)) {
                 options[k] = data[k];
+            }
+        }
+        if (options.hmr) {
+            var syncModules = moduleManage.getSyncModules();
+            if (syncModules) {
+                socket.sendMessage('syncModule', syncModules);
             }
         }
     },
@@ -875,7 +1781,7 @@ module.exports = exports = {
      * @param {{ path: string }} data 重新加载的样式文件信息
      */
     reloadCSS: function (data) {
-        var changeFilePath = getReloadFile(data.path);
+        var changeFilePath = data.path;
         var hasMatch = false;
         var linkStyles = dom.getLinkStyles();
         var importStyles = dom.getImportStyles();
@@ -903,7 +1809,7 @@ module.exports = exports = {
         if (!document.querySelectorAll && typeof jQuery === 'undefined') {
             exports.reloadPage();
         }
-        var changeFilePath = getReloadFile(data.path);
+        var changeFilePath = data.path;
         var hasReload = false;
         var reloadVersion = new Date().getTime();
         hasReload = reloadImageElement(changeFilePath, reloadVersion);
@@ -920,6 +1826,51 @@ module.exports = exports = {
      */
     reloadPage: function () {
         window.document.location.reload();
+    },
+    /**
+     * 更新模块资源
+     *
+     * @param {Object} data 变更的模块数据信息
+     * @param {string} data.path 更新的模块的路径
+     * @param {string} data.hash 模块内容的 hash 值
+     */
+    updateModule: function (data) {
+        // TODO 增加资源依赖同步接口
+        // TODO 对于样式修改，先判断页面引用的样式入口是否有该样式文件或者间接依赖该文件，有重新 reload 样式
+        moduleManage.updateModule(data);
+    },
+    /**
+     * 删除模块
+     *
+     * @param {Array.<string>} data 删除的模块路径信息
+     */
+    removeModule: function (data) {
+        moduleManage.removeModule(data);
+    },
+    /**
+     * 添加模块
+     *
+     * @param {Array.<Object>} data 添加的模块信息：
+     *        {
+     *          path: string,
+     *          hash: string
+     *        }
+     */
+    addModule: function (data) {
+        moduleManage.addModule(data);
+    },
+    /**
+     * 同步模块
+     *
+     * @param {Array.<Object>} data 要同步的模块信息，模块信息：
+     *        {
+     *          path: string,
+     *          removed: boolean, // 是否已经移除
+     *          hash: string, // 模块的内容 hash
+     *        }
+     */
+    syncModule: function (data) {
+        moduleManage.syncModule(data);
     }
 };
 })(_module, _exports, _require);
@@ -931,149 +1882,19 @@ _module = {exports: _exports};
 
 (function (module, exports, require) {
     /**
- * @file log 模块
+ * @file watchreload 客户端
  * @author sparklewhy@gmail.com
  */
-var options = require('options');
-/**
- * 打印日志信息
- *
- * @param {string} type 日志类型，有效值:log/warn/error
- * @param {...*} msg 要打印的消息
- */
-function log(type) {
-    var typeMap = {
-        debug: 'log',
-        info: 'log',
-        warn: 'warn',
-        error: 'error'
-    };
-    var logLevel = {
-        debug: 0,
-        info: 1,
-        warn: 2,
-        error: 3
-    };
-    var currLevel = logLevel[options.logLevel];
-    currLevel == null && (currLevel = logLevel.info);
-    if (logLevel[type] < currLevel) {
-        return;
-    }
-    var console = window.console;
-    if (console) {
-        var logInfo = console[typeMap[type]] || console.log;
-        if (typeof logInfo === 'function') {
-            var info = '[watchreload-' + type + ']: ' + arguments[1];
-            var args = Array.prototype.slice.call(arguments, 2);
-            args.unshift(info);
-            logInfo.apply(console, args);
-        }
-    }
-}
-module.exports = exports = {
-    debug: function () {
-        var args = Array.prototype.slice.call(arguments, 0);
-        args.unshift('debug');
-        log.apply(this, args);
-    },
-    info: function () {
-        var args = Array.prototype.slice.call(arguments, 0);
-        args.unshift('info');
-        log.apply(this, args);
-    },
-    warn: function () {
-        var args = Array.prototype.slice.call(arguments, 0);
-        args.unshift('warn');
-        log.apply(this, args);
-    },
-    error: function () {
-        var args = Array.prototype.slice.call(arguments, 0);
-        args.unshift('error');
-        log.apply(this, args);
-    }
-};
-})(_module, _exports, _require);
-_global['log'] = _module.exports;
-
-
-_exports = {};
-_module = {exports: _exports};
-
-(function (module, exports, require) {
-    /**
- * @file 和服务器通信接口定义
- * @author sparklewhy@gmail.com
- */
-var logger = require('log');
 var command = require('command');
-module.exports = exports = {
-    /**
-     * 初始化消息接收监听器
-     */
-    initMessageListener: function () {
-        var socket = this._socket;
-        socket.on('command', function (data) {
-            var handler = command[data.type];
-            delete data.type;
-            handler && handler(data);
-            logger.debug('receive command: %O', data);
-        });
-        socket.on('connect', function () {
-            socket.emit('register', { name: window.navigator.userAgent });
-            logger.info('connection is successful.');
-        });
-        socket.on('disconnect', function () {
-            logger.info('connection is disconnected.');
-        });
-        socket.on('reconnecting', function () {
-            logger.info('reconnection...');
-        });
-    },
-    /**
-     * 向服务端发送消息
-     *
-     * @param {string} msgType 发送的消息类型
-     * @param {Object} data 要发送消息数据
-     */
-    sendMessage: function (msgType, data) {
-        var socket = this._socket;
-        if (socket) {
-            socket.emit(msgType, data || {});
-        }
-    },
-    /**
-     * 打开socket通信，同时开始监听进入的消息
-     *
-     * @param {Object} io io 实例
-     */
-    open: function (io) {
-        // NOTICE: 这里端口使用变量方式，便于保持跟服务器端启用的端口一致
-        this._io = io;
-        this._socket = io('{{socketUrl}}');
-        this.initMessageListener();
-    },
-    /**
-     * 关闭socket通信
-     */
-    close: function () {
-        var socket = this._socket;
-        socket.disconnect();
-        this._socket = this._io = null;
-    }
-};
-})(_module, _exports, _require);
-_global['socket'] = _module.exports;
-
-
-_exports = {};
-_module = {exports: _exports};
-
-(function (module, exports, require) {
-    /**
- * @file watchreload 客户端实现
- * @author sparklewhy@gmail.com
- */
 var socket = require('socket');
+socket.on('*', function (type, data) {
+    var handler = command[type];
+    try {
+        handler && handler(data, socket);
+    } catch (ex) {
+        command.reloadPage();
+    }
+});
 // 打开socket
 socket.open(window.io);
 })(_module, _exports, _require);
