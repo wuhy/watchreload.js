@@ -825,9 +825,8 @@ window._hmrInitModule = function (id, module) {
  */
 window._hmrInitReloadUrl = function (id, url) {
     if (_reloadModule && id === _reloadModule.id) {
-        removeExistedScriptElement(id);
-        url += url.indexOf('?') !== -1 ? '&' : '?';
-        url += '_t=' + new Date().getTime();
+        removeExistedScriptElement(id);    // url += (url.indexOf('?') !== -1 ? '&' : '?');
+                                           // url += ('_t=' + (new Date()).getTime());
     }
     return url;
 };
@@ -838,6 +837,9 @@ window._hmrInitReloadUrl = function (id, url) {
  */
 window._hmrReloadDone = function (id) {
     if (_reloadModule && id === _reloadModule.id) {
+        // dispose old module
+        var oldMod = _reloadModule.define;
+        oldMod && hmr.disposeModule(_reloadModule.id, oldMod);
         _reloadDoneCallback(_reloadModule);
         _reloadDoneCallback = _reloadModule = null;
     }
@@ -878,7 +880,7 @@ function reloadModule(module, callback) {
     _reloadModule = module;
     _reloadDoneCallback = callback;
     logger.debug('require id: %s', moduleId);
-    window.require([moduleId], null, !defined);
+    window.require([moduleId]);
 }
 // TODO module plugin resource change update?
 // TODO entry script in html replacement and reexecute
@@ -890,8 +892,6 @@ function reloadModule(module, callback) {
 function removeCacheModule(path) {
     var id = _path2IdMap[path];
     if (id) {
-        var oldMod = _cacheModule[id];
-        oldMod && hmr.disposeModule(id, oldMod);
         delete _loadingModules[id];
         delete _cacheModule[id];
     }

@@ -1637,8 +1637,9 @@ var esl;
                 script.onload = script.onreadystatechange = null;
                 script = null;
 
-                onload();
                 window._hmrReloadDone(moduleId); // HMR
+                
+                onload();
             }
         }
         currentlyAddingScript = script;
