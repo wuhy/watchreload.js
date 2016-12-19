@@ -1,6 +1,6 @@
 {
   "name": "watchreload.js",
-  "version": "0.3.0",
+  "version": "0.3.0-beta.0",
   "description": "Watchreload client script",
   "main": "index",
   "scripts": {
