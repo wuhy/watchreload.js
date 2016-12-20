@@ -634,30 +634,30 @@ exports.hot = function (moduleId) {
     };
     return hot;
 };
-exports.disposeModule = function (moduleId, module) {
+exports.disposeModule = function (moduleId, mod) {
     var data = {};
     logger.debug('dispose module: %s', moduleId);
     // Call dispose handlers
-    var disposeHandlers = module.hot._disposeHandlers;
+    var disposeHandlers = mod.hot._disposeHandlers;
     for (var i = 0, len = disposeHandlers.length; i < len; i++) {
         var cb = disposeHandlers[i];
         cb(data);
     }
     hotCurrentModuleData[moduleId] = data;
     // disable module (this disables requires from this module)
-    module.hot.active = false;
+    mod.hot.active = false;
 };
-exports.isSelfAccept = function (module) {
-    return module.hot._selfAccepted;
+exports.isSelfAccept = function (mod) {
+    return mod.hot._selfAccepted;
 };
-exports.isSelfDecline = function (module) {
-    return module.hot._selfDeclined;
+exports.isSelfDecline = function (mod) {
+    return mod.hot._selfDeclined;
 };
-exports.isDecline = function (module, depModId) {
-    return module.hot._declinedDependencies[depModId];
+exports.isDecline = function (mod, depModId) {
+    return mod.hot._declinedDependencies[depModId];
 };
-exports.selfAccept = function (module, err) {
-    var callback = module.hot._selfAccepted;
+exports.selfAccept = function (mod, err) {
+    var callback = mod.hot._selfAccepted;
     if (typeof callback === 'function') {
         callback(err);
     }
@@ -725,11 +725,11 @@ var _waitingUpdateModules = [];
  */
 var _reloadModule;
 /**
- * 模块重新加载完成要执行的回调
+ * 模块重新加载失败要执行的回调
  *
  * @type {Function}
  */
-var _reloadDoneCallback;
+var _reloadFailCallback;
 /**
  * 热替换状态常量定义
  *
@@ -798,12 +798,12 @@ function removeExistedScriptElement(id) {
  * 初始化模块
  *
  * @param {string} id 资源 id
- * @param {Object} module 初始化的模块对象
+ * @param {Object} mod 初始化的模块对象
  */
-window._hmrInitModule = function (id, module) {
-    _cacheModule[id] = module;
+window._hmrInitModule = function (id, mod) {
+    _cacheModule[id] = mod;
     // 增加 module hmr api
-    module.hot = hmr.hot(id);
+    mod.hot = hmr.hot(id);
     if (_status == null) {
         _status = HMR_STATUS.IDLE;
     }
@@ -833,31 +833,24 @@ window._hmrInitReloadUrl = function (id, url) {
 /**
  * 模块重新加载完成，如果失败也会触发该回调
  *
+ * @param {?Object|string} err 加载错误信息
  * @param {string} id 重新加载完成的模块 id
  */
-window._hmrReloadDone = function (id) {
+window._hmrReloadDone = function (err, id) {
     if (_reloadModule && id === _reloadModule.id) {
         // dispose old module
         var oldMod = _reloadModule.define;
         oldMod && hmr.disposeModule(_reloadModule.id, oldMod);
-        _reloadDoneCallback(_reloadModule);
-        _reloadDoneCallback = _reloadModule = null;
+        if (err) {
+            _reloadFailCallback(null, err);
+        }
+        _reloadModule = _reloadFailCallback = null;
     }
 };
-/**
- * 重新加载初始化模块
- *
- * @param {Object} module 要重新加载的模块
- * @param {Function} callback 重新加载完成执行的回调
- */
-function reloadModule(module, callback) {
-    if (!module.id) {
-        callback();
-        return;
-    }
-    var moduleId = module.id;
-    var mod = _cacheModule[moduleId];
-    var defined = module.inited;
+function redefineModule(oldMod) {
+    var moduleId = oldMod.id;
+    var mod = oldMod.define;
+    var defined = oldMod.inited;
     if (mod && defined) {
         try {
             hmr.disposeModule(moduleId, mod);
@@ -868,19 +861,31 @@ function reloadModule(module, callback) {
             }
             mod.resetPrepareState && mod.resetPrepareState();
             mod.invokeFactory && mod.invokeFactory();
-            callback(module);
         } catch (ex) {
-            if (hmr.isSelfAccept(mod.define)) {
-                hmr.selfAccept(mod.define, ex);
+            if (hmr.isSelfAccept(mod)) {
+                hmr.selfAccept(mod, ex);
             }
         }
+    }
+}
+/**
+ * 重新加载初始化模块
+ *
+ * @param {Object} oldMod 要重新加载的模块
+ * @param {Function} callback 重新加载完成执行的回调
+ */
+function reloadModule(oldMod, callback) {
+    var moduleId = oldMod.id;
+    // 如果要 reload 的变更模块可能之前并不存在，那直接无视
+    if (!moduleId) {
+        callback();
         return;
     }
     // 每次模块变更只会触发一个模块的重新加载，其他过期的父模块只需重新定义即可
-    _reloadModule = module;
-    _reloadDoneCallback = callback;
+    _reloadModule = oldMod;
+    _reloadFailCallback = callback;
     logger.debug('require id: %s', moduleId);
-    window.require([moduleId]);
+    window.require([moduleId], callback);
 }
 // TODO module plugin resource change update?
 // TODO entry script in html replacement and reexecute
@@ -899,11 +904,11 @@ function removeCacheModule(path) {
 /**
  * 获取模块元数据信息
  *
- * @param {Object} module 要获取的模块信息
+ * @param {Object} mod 要获取的模块信息
  * @return {Object}
  */
-function getModuleMetaData(module) {
-    var id = module.id;
+function getModuleMetaData(mod) {
+    var id = mod.id;
     var resInfo = parseResource(id);
     var resId = resInfo.resource;
     if (resId) {
@@ -917,16 +922,16 @@ function getModuleMetaData(module) {
     var metaData = {};
     metaData.id = id;
     metaData.path = path;
-    metaData.define = module;
+    metaData.define = mod;
     // 初始化依赖的模块
-    var deps = module.depMs || [];
+    var deps = mod.depMs || [];
     var depModPaths = [];
     for (var i = 0, len = deps.length; i < len; i++) {
         depModPaths[i] = id2Path(deps[i].absId);
     }
     metaData.depModules = depModPaths;
     // 初始化依赖的资源
-    var depRes = module.depRs || [];
+    var depRes = mod.depRs || [];
     var depResPaths = [];
     for (i = 0, len = depRes.length; i < len; i++) {
         if (depRes[i].absId) {
@@ -936,7 +941,7 @@ function getModuleMetaData(module) {
         }
     }
     metaData.depResources = depResPaths;
-    metaData.inited = module.state === 4;
+    metaData.inited = mod.state === 4;
     // 如果定义过，则认为初始化过
     return metaData;
 }
@@ -950,12 +955,12 @@ function getParentModule(path) {
     var parents = [];
     for (var k in _cacheModule) {
         if (_cacheModule.hasOwnProperty(k) && k !== path) {
-            var module = getModuleMetaData(_cacheModule[k]);
-            if (module) {
-                var deps = module.depModules || [];
+            var mod = getModuleMetaData(_cacheModule[k]);
+            if (mod) {
+                var deps = mod.depModules || [];
                 var index = util.findInArray(path, deps);
                 if (index !== -1 && !util.isInArr(deps[index], parents)) {
-                    parents.push(module.path);
+                    parents.push(mod.path);
                 }
             }
         }
@@ -982,8 +987,8 @@ function initOutdatedModules(upModule, result, ignore, initedPathMap, depMap) {
         throw new Error('Aborted because of self decline: ' + upModule.id);
     }
     if (!ignore && upModule.inited) {
-        if (!util.isInArr(module, result)) {
-            result.push(module);
+        if (!util.isInArr(upModule, result)) {
+            result.push(upModule);
         }
     }
     // 模块不存在，可能一开始是加载失败，导致依赖该模块的模块没法正常初始化，
@@ -1065,26 +1070,17 @@ exports.updateModule = function (data) {
     if (updateModule.id) {
         allUpMods.push(updateModule);
     }
+    // 先移除缓存的模块
+    removeCacheModule(data.path);
     var total = outdatedModules.length;
-    var counter = 0;
-    var done = function () {
-        counter++;
-        if (counter >= total) {
-            // 接受代码更新
-            hmr.accept(allUpMods, depMap);
-            applyUpdate();
-        }
-    };
-    // 先移除变更的模块，再重新更新所有过期的模块
-    removeCacheModule(path);
     var updateOutdateModules = function () {
         for (var i = 0; i < total; i++) {
-            var module = outdatedModules[i];
-            reloadModule(module, done);
+            var mod = outdatedModules[i];
+            redefineModule(mod);
         }
-        if (!total) {
-            done();
-        }
+        // 接受代码更新
+        hmr.accept(allUpMods, depMap);
+        applyUpdate();
     };
     var isModuleRemoved = data.removed;
     if (isModuleRemoved) {
