@@ -105,13 +105,13 @@ exports.hot = function (moduleId) {
     return hot;
 };
 
-exports.disposeModule = function (moduleId, module) {
+exports.disposeModule = function (moduleId, mod) {
     var data = {};
 
     logger.debug('dispose module: %s', moduleId);
 
     // Call dispose handlers
-    var disposeHandlers = module.hot._disposeHandlers;
+    var disposeHandlers = mod.hot._disposeHandlers;
     for (var i = 0, len = disposeHandlers.length; i < len; i++) {
         var cb = disposeHandlers[i];
         cb(data);
@@ -119,23 +119,23 @@ exports.disposeModule = function (moduleId, module) {
     hotCurrentModuleData[moduleId] = data;
 
     // disable module (this disables requires from this module)
-    module.hot.active = false;
+    mod.hot.active = false;
 };
 
-exports.isSelfAccept = function (module) {
-    return module.hot._selfAccepted;
+exports.isSelfAccept = function (mod) {
+    return mod.hot._selfAccepted;
 };
 
-exports.isSelfDecline = function (module) {
-    return module.hot._selfDeclined;
+exports.isSelfDecline = function (mod) {
+    return mod.hot._selfDeclined;
 };
 
-exports.isDecline = function (module, depModId) {
-    return module.hot._declinedDependencies[depModId];
+exports.isDecline = function (mod, depModId) {
+    return mod.hot._declinedDependencies[depModId];
 };
 
-exports.selfAccept = function (module, err) {
-    var callback = module.hot._selfAccepted;
+exports.selfAccept = function (mod, err) {
+    var callback = mod.hot._selfAccepted;
     if (typeof callback === 'function') {
         callback(err);
     }

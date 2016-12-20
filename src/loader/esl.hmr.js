@@ -1624,8 +1624,8 @@ var esl;
         }
 
         // HMR
-        script.onerror = function () {
-            window._hmrReloadDone(moduleId);
+        script.onerror = function (ex) {
+            window._hmrReloadDone(ex || 'error', moduleId);
         };
 
         function innerOnload() {
@@ -1637,8 +1637,8 @@ var esl;
                 script.onload = script.onreadystatechange = null;
                 script = null;
 
-                window._hmrReloadDone(moduleId); // HMR
-                
+                window._hmrReloadDone(null, moduleId); // HMR
+
                 onload();
             }
         }
