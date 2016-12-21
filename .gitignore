@@ -5,3 +5,4 @@ node_modules
 coverage/
 .jshint.report
 yarn.lock
+dist/
