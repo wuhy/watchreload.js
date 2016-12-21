@@ -6,7 +6,9 @@
   "scripts": {
     "test": "mocha test/tasks/*.spec.js",
     "esl": "uglifyjs src/loader/esl.hmr.js -o dist/esl.hmr.min.js && cp src/loader/esl.hmr.js dist/esl.hmr.js",
-    "release": "sh build/release.sh && npm run esl"
+    "clean": "rm -rf dist && mkdir dist",
+    "build": "sh build/release.sh && npm run esl",
+    "prepublish": "npm run clean && npm run build"
   },
   "repository": {
     "type": "git",
