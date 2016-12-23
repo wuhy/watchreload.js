@@ -26,8 +26,8 @@
   "author": "sparklewhy@gmail.com",
   "license": "MIT",
   "devDependencies": {
-    "cjs2iife": "^0.1.0",
-    "uglify-js": "^2.6.1"
+    "cjs2iife": "^0.1.2",
+    "uglify-js": "^2.7.5"
   },
   "dependencies": {},
   "readmeFilename": "README.md"
