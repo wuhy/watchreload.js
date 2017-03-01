@@ -272,7 +272,6 @@ module.exports = exports = {
      * @param {Object} socket 和服务器端通信 socket 实例
      */
     init: function (data, socket) {
-        options.hmr = !!data.hmr;
         for (var k in data) {
             if (data.hasOwnProperty(k)) {
                 options[k] = data[k];
@@ -313,7 +312,19 @@ module.exports = exports = {
         }
 
         if (!hasMatch) {
-            exports.reloadPage();
+            if (options.forceReloadWhenCssNotMatch) {
+                exports.reloadPage();
+            }
+            else {
+                // 如果没有匹配到，直接所有样式重新加载一遍
+                for (var i = 0, len = linkStyles.length; i < len; i++) {
+                    dom.reloadLinkStyle(linkStyles[i]);
+                }
+
+                for (i = 0, len = importStyles.length; i < len; i++) {
+                    dom.reloadImportStyle(importStyles[i]);
+                }
+            }
         }
 
     },

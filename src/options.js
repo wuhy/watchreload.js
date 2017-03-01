@@ -17,6 +17,13 @@ module.exports = exports = {
      *
      * @type {boolean}
      */
-    hmr: false
+    hmr: false,
+
+    /**
+     *  是否强制重新 reload 页面，当要 reload 样式文件没有匹配到时候
+     *
+     *  @type {boolean}
+     */
+    forceReloadWhenCssNotMatch: false
 };
 
